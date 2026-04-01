@@ -17,6 +17,10 @@ KMINOR=$(echo "$KVER" | cut -d. -f2)
 DO_WIFI=false
 DO_BT=false
 USE_DKMS=true
+USE_FALLBACK=false
+FALLBACK_REPO="https://github.com/hmtheboy154/mt7902"
+FALLBACK_DIR="/tmp/mt7902-fallback"
+WIFI_DRIVER_USED=""
 
 # ── colors ────────────────────────────────────────────────────
 NC='\033[0m'
@@ -69,12 +73,14 @@ usage() {
     --wifi        Install WiFi driver only
     --bt          Install Bluetooth driver only
     --no-dkms     Build WiFi driver manually instead of using DKMS
+    --fallback    Skip gen4 driver, use hmtheboy154/mt7902 directly
     -h, --help    Show this message
 
   Examples:
-    sudo $0               # install everything
+    sudo $0               # install everything (auto-selects best driver)
     sudo $0 --wifi        # wifi driver + firmware only
     sudo $0 --bt          # bluetooth driver + firmware only
+    sudo $0 --fallback    # use hmtheboy154/mt7902 driver directly
 EOF
     exit 0
 }
@@ -90,6 +96,7 @@ for arg in "$@"; do
         --wifi)     DO_WIFI=true ;;
         --bt)       DO_BT=true ;;
         --no-dkms)  USE_DKMS=false ;;
+        --fallback) USE_FALLBACK=true ;;
         -h|--help)  usage ;;
         *)          echo "Unknown option: $arg"; usage ;;
     esac
@@ -126,14 +133,147 @@ install_deps() {
     ok "Dependencies ready (${DISTRO})"
 }
 
+# ── wifi health check ─────────────────────────────────────────
+# Returns 0 if the driver loaded OK, 1 if it failed or has errors.
+check_wifi_health() {
+    local healthy=true
+
+    # 1. Check if module is loaded
+    if ! lsmod | grep -q "^mt7902 "; then
+        warn "Module mt7902 not found in lsmod"
+        healthy=false
+    fi
+
+    # 2. Check dmesg for panic / error indicators from mt7902
+    local errors
+    errors=$(dmesg --since "30 seconds ago" 2>/dev/null | grep -iE 'mt7902.*(panic|oops|bug|error|fail|timeout|firmware.*fail|mcu.*fail|BAR0)' || true)
+    if [ -n "$errors" ]; then
+        warn "Kernel errors detected after loading mt7902:"
+        echo "$errors" | head -5 | while read -r line; do
+            echo -e "        ${DIM}${line}${NC}"
+        done
+        healthy=false
+    fi
+
+    # 3. Check if a WiFi interface appeared (wlan*, wlp*, etc.)
+    sleep 2  # give the interface a moment to register
+    if ! ip link show 2>/dev/null | grep -qE 'wlan|wlp|wlo'; then
+        warn "No WiFi interface detected (wlan*/wlp*/wlo*)"
+        healthy=false
+    fi
+
+    [ "$healthy" = true ]
+}
+
+# ── full cleanup of failed gen4-mt7902 ────────────────────────
+# Removes everything so the fallback driver has a clean slate.
+cleanup_gen4() {
+    step "Removing failed gen4-mt7902 driver"
+
+    # 1. Unload module
+    rmmod mt7902 2>/dev/null || true
+    ok "Module unloaded"
+
+    # 2. Remove from DKMS
+    if dkms status gen4-mt7902 2>/dev/null | grep -q "gen4-mt7902"; then
+        dkms remove gen4-mt7902/0.1 --all 2>/dev/null || true
+        ok "DKMS entry removed"
+    fi
+
+    # 3. Remove DKMS source copy
+    rm -rf /usr/src/gen4-mt7902-0.1
+    ok "DKMS source removed (/usr/src/gen4-mt7902-0.1)"
+
+    # 4. Remove installed .ko files
+    local mod_dir="/lib/modules/$(uname -r)"
+    find "$mod_dir" -name "mt7902.ko*" -delete 2>/dev/null || true
+    ok "Kernel module files cleaned"
+
+    # 5. Remove modprobe config (mcu_bypass etc.)
+    rm -f /etc/modprobe.d/mt7902.conf
+
+    # 6. Remove blacklist (so hmtheboy154's mt7902e is not blocked)
+    rm -f /etc/modprobe.d/blacklist-mt7921.conf
+    ok "Blacklist removed (mt7902e will be allowed to load)"
+
+    # 7. Remove late-load service
+    if command -v systemctl &>/dev/null; then
+        systemctl disable mt7902-late.service 2>/dev/null || true
+        rm -f /etc/systemd/system/mt7902-late.service
+        systemctl daemon-reload 2>/dev/null || true
+    fi
+
+    # 8. Rebuild initramfs without the blacklist
+    if command -v update-initramfs &>/dev/null; then
+        update-initramfs -u 2>/dev/null && ok "initramfs rebuilt (clean)"
+    elif command -v mkinitcpio &>/dev/null; then
+        mkinitcpio -P 2>/dev/null && ok "initramfs rebuilt (clean)"
+    elif command -v dracut &>/dev/null; then
+        dracut --force 2>/dev/null && ok "initramfs rebuilt (clean)"
+    fi
+
+    depmod -a
+    ok "gen4-mt7902 fully removed"
+}
+
+# ── fallback wifi driver (hmtheboy154/mt7902) ─────────────────
+install_wifi_fallback() {
+    echo ""
+    echo -e "  ${YELLOW}━━━ Switching to alternative driver (hmtheboy154/mt7902) ━━━${NC}"
+    echo ""
+
+    # fully clean up the failed gen4 driver first
+    cleanup_gen4
+
+    step "Cloning hmtheboy154/mt7902"
+    rm -rf "$FALLBACK_DIR"
+    if ! git clone --depth 1 "$FALLBACK_REPO" "$FALLBACK_DIR" 2>&1; then
+        fail "Could not clone ${FALLBACK_REPO}"
+        fail "Check your internet connection and try again."
+        exit 1
+    fi
+    ok "Repository cloned to ${FALLBACK_DIR}"
+
+    step "Building alternative WiFi driver"
+    cd "$FALLBACK_DIR"
+    make -j$(nproc)
+    sudo make install -j$(nproc)
+    ok "Alternative driver built and installed"
+
+    step "Installing firmware (hmtheboy154/mt7902)"
+    make install_fw 2>/dev/null || warn "Firmware install step skipped (may already be present)"
+    ok "Firmware installed"
+
+    cd "$SCRIPT_DIR"
+
+    step "Loading alternative WiFi module"
+    depmod -a
+    rmmod mt7902e 2>/dev/null || true
+    rmmod mt7921e 2>/dev/null || true
+    rmmod mt7921_common 2>/dev/null || true
+    rmmod mt76_connac_lib 2>/dev/null || true
+    modprobe mt7902e || { fail "Could not load alternative driver either."; exit 1; }
+    ok "Alternative driver loaded (mt7902e by hmtheboy154)"
+
+    WIFI_DRIVER_USED="hmtheboy154/mt7902"
+}
+
 # ── wifi ──────────────────────────────────────────────────────
 install_wifi() {
     local src="${SCRIPT_DIR}/gen4-mt7902"
-    [ -d "$src" ] || { fail "WiFi source not found: $src"; return 1; }
 
     # detect firmware path (Arch uses /usr/lib/firmware, others use /lib/firmware)
     local FW_DIR="/lib/firmware"
     [ -d "/usr/lib/firmware" ] && ! [ -L "/lib" ] && FW_DIR="/usr/lib/firmware"
+
+    # ── if --fallback flag used, skip gen4 entirely ────────────
+    if [ "$USE_FALLBACK" = true ]; then
+        step "Skipping gen4 driver (--fallback flag set)"
+        install_wifi_fallback
+        return 0
+    fi
+
+    [ -d "$src" ] || { fail "WiFi source not found: $src"; return 1; }
 
     step "Building WiFi driver (gen4-mt7902)"
 
@@ -199,18 +339,49 @@ EOF
     rmmod mt7921_common 2>/dev/null || true
     rmmod mt76_connac_lib 2>/dev/null || true
     rmmod mt7902 2>/dev/null || true
-    if ! modprobe mt7902; then
-        warn "Standard load failed. Attempting MCU Bypass (Force Load)..."
-        if modprobe mt7902 mcu_bypass=1; then
-            warn "Module loaded with MCU Bypass! Hardware may be unstable."
-            echo "options mt7902 mcu_bypass=1" > /etc/modprobe.d/mt7902.conf
-            ok "Persisted MCU bypass options to /etc/modprobe.d/mt7902.conf"
+
+    # ── try loading gen4 driver + health check ────────────────
+    local gen4_ok=false
+    if modprobe mt7902 2>/dev/null; then
+        step "Verifying gen4 driver health"
+        if check_wifi_health; then
+            ok "gen4-mt7902 loaded and WiFi interface is up"
+            gen4_ok=true
+            WIFI_DRIVER_USED="gen4-mt7902 (abdullaabdullazade)"
         else
-            fail "Could not load mt7902 module even with bypass."
-            exit 1
+            warn "gen4-mt7902 loaded but health check failed"
         fi
     else
-        ok "mt7902 module loaded"
+        warn "gen4-mt7902 failed to load"
+    fi
+
+    # ── try MCU bypass if standard load had issues ────────────
+    if [ "$gen4_ok" = false ]; then
+        warn "Attempting MCU Bypass (Force Load)..."
+        rmmod mt7902 2>/dev/null || true
+        if modprobe mt7902 mcu_bypass=1 2>/dev/null; then
+            sleep 2
+            if check_wifi_health; then
+                warn "Module loaded with MCU Bypass — works but may be unstable."
+                echo "options mt7902 mcu_bypass=1" > /etc/modprobe.d/mt7902.conf
+                ok "Persisted MCU bypass options to /etc/modprobe.d/mt7902.conf"
+                gen4_ok=true
+                WIFI_DRIVER_USED="gen4-mt7902 (abdullaabdullazade) [mcu_bypass]"
+            else
+                warn "MCU bypass also failed health check"
+            fi
+        else
+            warn "MCU bypass load failed"
+        fi
+    fi
+
+    # ── fallback to hmtheboy154/mt7902 ────────────────────────
+    if [ "$gen4_ok" = false ]; then
+        echo ""
+        warn "gen4-mt7902 driver is not working on this system."
+        echo -e "      ${YELLOW}Automatically falling back to hmtheboy154/mt7902...${NC}"
+        install_wifi_fallback
+        return 0
     fi
 
     # install late-load systemd service (fixes boot race condition)
@@ -329,12 +500,23 @@ elif [ "$DO_WIFI" = true ]; then
 else
     echo -e "  ${DIM}Installed: Bluetooth${NC}"
 fi
+if [ -n "$WIFI_DRIVER_USED" ]; then
+    echo -e "  ${WHITE}WiFi driver:${NC} ${CYAN}${WIFI_DRIVER_USED}${NC}"
+fi
 echo -e "  ${DIM}Reboot for changes to take effect.${NC}"
-echo -e "  ${DIM}WiFi flaky? → sudo rmmod mt7902 && sudo modprobe mt7902${NC}"
-echo -e "  ${DIM}Stability issues? Try these options:${NC}"
-echo -e "    ${DIM}1. Disable Runtime PM: sudo modprobe mt7902 disable_rpm=1${NC}"
-echo -e "    ${DIM}2. Increase Timeout:   sudo modprobe mt7902 cmd_timeout_ms=8000${NC}"
-echo -e "    ${DIM}3. Force Load (Dead Card): sudo modprobe mt7902 mcu_bypass=1${NC}"
+if [[ "$WIFI_DRIVER_USED" == *"gen4"* ]]; then
+    echo -e "  ${DIM}WiFi flaky? → sudo rmmod mt7902 && sudo modprobe mt7902${NC}"
+    echo -e "  ${DIM}Stability issues? Try these options:${NC}"
+    echo -e "    ${DIM}1. Disable Runtime PM: sudo modprobe mt7902 disable_rpm=1${NC}"
+    echo -e "    ${DIM}2. Increase Timeout:   sudo modprobe mt7902 cmd_timeout_ms=8000${NC}"
+    echo -e "    ${DIM}3. Force Load (Dead Card): sudo modprobe mt7902 mcu_bypass=1${NC}"
+    echo ""
+    echo -e "  ${YELLOW}Still having problems?${NC} ${DIM}Re-run with the fallback driver:${NC}"
+    echo -e "    ${DIM}sudo ./install.sh --fallback${NC}"
+elif [[ "$WIFI_DRIVER_USED" == *"hmtheboy154"* ]]; then
+    echo -e "  ${DIM}Using alternative driver by hmtheboy154.${NC}"
+    echo -e "  ${DIM}Source: https://github.com/hmtheboy154/mt7902${NC}"
+fi
 echo ""
 echo -e "${DIM}────────────────────────────────────────────────────────${NC}"
 echo ""

@@ -32,6 +32,33 @@ sudo ./install.sh --all      # both (same as no flag)
 sudo ./install.sh --no-dkms  # skip DKMS, compile manually
 ```
 
+### Automatic driver selection
+
+The installer automatically detects whether the gen4-mt7902 driver works on your hardware. After loading the module it checks:
+
+1. **Module loaded** — `mt7902` appears in `lsmod`
+2. **No kernel errors** — `dmesg` is clean (no panics, MCU failures, BAR0 errors)
+3. **WiFi interface appeared** — a `wlan*` / `wlp*` / `wlo*` device shows up
+
+If any check fails, the installer **automatically falls back** to the alternative driver by **[hmtheboy154](https://github.com/hmtheboy154)**: [hmtheboy154/mt7902](https://github.com/hmtheboy154/mt7902) (supports kernel 6.6–6.19).
+
+You can also force the fallback driver directly:
+
+```sh
+sudo ./install.sh --fallback  # skip gen4, use hmtheboy154/mt7902
+```
+
+Or install it manually:
+
+```sh
+git clone https://github.com/hmtheboy154/mt7902
+cd mt7902
+sudo make install -j$(nproc)
+sudo make install_fw          # install firmware
+```
+
+See [hmtheboy154/mt7902](https://github.com/hmtheboy154/mt7902) for more details.
+
 ## Uninstall
 
 ```sh
