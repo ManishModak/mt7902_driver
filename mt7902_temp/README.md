@@ -1,8 +1,41 @@
-# 🎯 mt7902 driver development (⚡ in progress)
+# 🎯 mt7902 driver development (✅ Working)
 We are trying to develop the driver for the Mediatek mt7902 wifi 6E chip
+
+## ✅ Tested On (Verified Working)
+This fix has been verified and is confirmed working on:
+
+* **Brand:** ASUS
+* **Model:** Vivobook Go (E1404FA)
+* **Chipset:** MediaTek MT7902 (WiFi 6E)
+* **Kernel Version:** 6.19.0 (Linux)
+* **OS:** Ubuntu 24.04 (or similar Debian-based distros)
+
+## 🚀 Easy Automatic Fix (Recommended)
+If you want to quickly fix your WiFi and Bluetooth on any modern kernel, follow these steps:
+
+1. **Open your terminal** and clone the repository:
+   ```bash
+   git clone --depth 1 https://github.com/OnlineLearningTutorials/mt7902_temp
+   cd mt7902_temp
+   ```
+
+2. **Run the automatic fix script** with sudo:
+   ```bash
+   sudo bash fix_my_wifi.sh
+   ```
+
+### 📖 What this script does:
+* **Checks for dependencies:** Ensures you have `gcc`, `make`, and your current `kernel-headers` installed.
+* **Compiles Drivers:** Automatically builds both WiFi and Bluetooth drivers for your exact kernel version.
+* **Persistent Fix:** Installs a system service that ensures your WiFi stays active even after you restart your computer.
+* **Safety:** Installs modules into a custom directory (`/lib/modules/mt7902_custom`) to avoid messing with your default system files.
+
+> [!NOTE]
+> You will need an internet connection (via Ethernet or USB tethering from your phone) the first time you run this to download the necessary build tools.
 
 ## 🔧 Firmwares used
 Firmwares are stored in `mt7902_firmware` folder.
+Recently released firmware are in the `mt7902_firmware/latest` folder.
 
 ## 📁 Cloning the repository
 Clone the repository to your local pc
@@ -37,8 +70,26 @@ sudo insmod btusb.ko
 ```
 Now check your bluetooth is working now.
 
-## 💻 WiFi (⚡ in progress)
+## 💻 WiFi ✅ (Working)
 > [!IMPORTANT]
 > A working repo with some limitation is [here](https://github.com/hmtheboy154/gen4-mt7902)
 
-We are trying to build the driver for mt7902 wifi card, it is not completed - work in progress.
+WiFi driver for the mt7902, recently released by mediatek is inside the `latest` folder. 
+
+If you are using Ubuntu than just go to the `latest` folder and run the following command in the termianl. 
+```
+make
+```
+
+It will compile all modules, compress it and install it (replace original kernel module with the modified module). If you are some other distro or not want all steps and only wants to compile the code, than run in the termianl 
+```
+make module_compile
+```
+To compress the module you compiled, than run in terminal
+```
+make module_compress
+```
+To install the compressed module to the system's kernel module, run in terminal
+```
+make module_install
+```
