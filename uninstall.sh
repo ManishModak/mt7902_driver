@@ -109,6 +109,12 @@ rm -f /etc/modprobe.d/blacklist-mt7921.conf 2>/dev/null || true
 rm -f /etc/modprobe.d/blacklist-mt7902.conf 2>/dev/null || true
 ok "Blacklist configs removed"
 
+# remove udev rule for autosuspend
+step "Removing udev autosuspend rules"
+rm -f /etc/udev/rules.d/99-disable-autosuspend.rules 2>/dev/null || true
+udevadm control --reload-rules 2>/dev/null || true
+ok "udev rules removed"
+
 # remove late-load systemd service
 if command -v systemctl &>/dev/null; then
     systemctl disable mt7902-late.service 2>/dev/null || true
