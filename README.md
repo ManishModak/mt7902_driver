@@ -18,7 +18,13 @@ Prerequisites: `build-essential`, `linux-headers`, `dkms`, `zstd`. The script in
 ```sh
 git clone https://github.com/ManishModak/mt7902_driver
 cd mt7902_driver
-sudo ./install.sh --fallback --wifi            # Recommended for CachyOS / unstable kernels
+
+# To install BOTH WiFi and Bluetooth (Recommended):
+sudo ./install.sh --fallback
+
+# To install separately:
+sudo ./install.sh --fallback --wifi            # WiFi only
+sudo ./install.sh --fallback --bt              # Bluetooth only
 ```
 
 Reboot after installing.
