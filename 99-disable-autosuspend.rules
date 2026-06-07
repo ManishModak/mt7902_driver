@@ -1,0 +1,2 @@
+# Disable USB autosuspend for MediaTek MT7902 Bluetooth controller (Foxconn / Hon Hai)
+ACTION=="add", SUBSYSTEM=="usb", ATTRS{idVendor}=="0489", ATTRS{idProduct}=="e156", ATTR{power/control}="on"

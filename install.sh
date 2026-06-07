@@ -460,6 +460,14 @@ install_bt() {
         install -m 644 btusb.ko btmtk.ko "$mod/"
     fi
 
+    step "Disabling USB autosuspend for Bluetooth"
+    if [ -f "${SCRIPT_DIR}/99-disable-autosuspend.rules" ]; then
+        cp "${SCRIPT_DIR}/99-disable-autosuspend.rules" /etc/udev/rules.d/
+        udevadm control --reload-rules
+        udevadm trigger --subsystem-match=usb
+        ok "autosuspend disabled for 0489:e156"
+    fi
+
     rmmod btusb 2>/dev/null || true
     rmmod btmtk 2>/dev/null || true
     depmod -a
