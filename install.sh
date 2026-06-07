@@ -468,6 +468,12 @@ install_bt() {
         ok "autosuspend disabled for 0489:e156"
     fi
 
+    step "Configuring Bluetooth soft dependency on Wi-Fi"
+    if [ -f "${SCRIPT_DIR}/mt7902-bluetooth.conf" ]; then
+        cp "${SCRIPT_DIR}/mt7902-bluetooth.conf" /etc/modprobe.d/
+        ok "softdep configured (/etc/modprobe.d/mt7902-bluetooth.conf)"
+    fi
+
     rmmod btusb 2>/dev/null || true
     rmmod btmtk 2>/dev/null || true
     depmod -a

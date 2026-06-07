@@ -115,6 +115,11 @@ rm -f /etc/udev/rules.d/99-disable-autosuspend.rules 2>/dev/null || true
 udevadm control --reload-rules 2>/dev/null || true
 ok "udev rules removed"
 
+# remove softdep rules
+step "Removing softdep rules"
+rm -f /etc/modprobe.d/mt7902-bluetooth.conf 2>/dev/null || true
+ok "softdep rules removed"
+
 # remove late-load systemd service
 if command -v systemctl &>/dev/null; then
     systemctl disable mt7902-late.service 2>/dev/null || true
