@@ -63,9 +63,15 @@ echo ""
 if [ "$RM_WIFI" = true ]; then
     step "Removing WiFi driver"
     rmmod mt7902 2>/dev/null || true
+    rmmod mt7902e 2>/dev/null || true
     command -v dkms &>/dev/null && dkms remove gen4-mt7902/0.1 --all 2>/dev/null || true
     rm -rf /usr/src/gen4-mt7902-0.1
     ok "DKMS module removed"
+
+    # Remove alternative driver files if installed
+    local mod_dir="/lib/modules/$(uname -r)"
+    find "$mod_dir" -name "mt7902e.ko*" -delete 2>/dev/null || true
+    ok "Alternative WiFi module files cleaned"
 
     if [ "$KEEP_FW" = false ]; then
         step "Removing WiFi firmware"
@@ -119,10 +125,12 @@ echo -e "  ${GREEN}${BOLD}Uninstallation complete.${NC}"
 echo ""
 echo -e "${DIM}────────────────────────────────────────────────────────${NC}"
 echo ""
-echo -e "  ${YELLOW}Rebooting in 5 seconds... (Ctrl+C to cancel)${NC}"
-for i in 5 4 3 2 1; do
-    echo -ne "\r  ${BOLD}${i}...${NC}  "
-    sleep 1
-done
+echo -e "  ${YELLOW}Would you like to reboot now? [y/N]${NC}"
+read -r -t 15 -p "  Reboot? [y/N]: " response || response="n"
 echo ""
-reboot
+if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+    echo -e "  ${GREEN}Rebooting...${NC}"
+    reboot
+else
+    echo -e "  ${GREEN}Please reboot manually when convenient for changes to take effect.${NC}"
+fi

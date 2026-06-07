@@ -225,14 +225,21 @@ install_wifi_fallback() {
     # fully clean up the failed gen4 driver first
     cleanup_gen4
 
-    step "Cloning hmtheboy154/mt7902"
-    rm -rf "$FALLBACK_DIR"
-    if ! git clone --depth 1 "$FALLBACK_REPO" "$FALLBACK_DIR" 2>&1; then
-        fail "Could not clone ${FALLBACK_REPO}"
-        fail "Check your internet connection and try again."
-        exit 1
+    if [ -d "${SCRIPT_DIR}/mt7902" ]; then
+        step "Using local copy of hmtheboy154/mt7902"
+        rm -rf "$FALLBACK_DIR"
+        cp -r "${SCRIPT_DIR}/mt7902" "$FALLBACK_DIR"
+        ok "Local copy prepared at ${FALLBACK_DIR}"
+    else
+        step "Cloning hmtheboy154/mt7902"
+        rm -rf "$FALLBACK_DIR"
+        if ! git clone --depth 1 "$FALLBACK_REPO" "$FALLBACK_DIR" 2>&1; then
+            fail "Could not clone ${FALLBACK_REPO}"
+            fail "Check your internet connection and try again."
+            exit 1
+        fi
+        ok "Repository cloned to ${FALLBACK_DIR}"
     fi
-    ok "Repository cloned to ${FALLBACK_DIR}"
 
     step "Building alternative WiFi driver"
     cd "$FALLBACK_DIR"
@@ -520,10 +527,12 @@ fi
 echo ""
 echo -e "${DIM}────────────────────────────────────────────────────────${NC}"
 echo ""
-echo -e "  ${YELLOW}Rebooting in 5 seconds... (Ctrl+C to cancel)${NC}"
-for i in 5 4 3 2 1; do
-    echo -ne "\r  ${BOLD}${i}...${NC}  "
-    sleep 1
-done
+echo -e "  ${YELLOW}Would you like to reboot now? [y/N]${NC}"
+read -r -t 15 -p "  Reboot? [y/N]: " response || response="n"
 echo ""
-reboot
+if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+    echo -e "  ${GREEN}Rebooting...${NC}"
+    reboot
+else
+    echo -e "  ${GREEN}Please reboot manually when convenient for changes to take effect.${NC}"
+fi

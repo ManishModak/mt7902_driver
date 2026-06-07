@@ -28,12 +28,20 @@ export COMPRESS_GZIP COMPRESS_XZ COMPRESS_ZSTD
 # The directory containing the actual source code and kbuild Makefile
 SRC_DIR := $(shell pwd)/src
 
+# Automatically detect if kernel was built with Clang/LLVM
+CC_IS_CLANG := $(shell grep -q "CONFIG_CC_IS_CLANG=y" $(KSRC)/.config 2>/dev/null && echo "y" || echo "n")
+ifeq ($(CC_IS_CLANG),y)
+LLVM_OR_NOT := LLVM=1
+else
+LLVM_OR_NOT :=
+endif
+
 all:
-	$(MAKE) -j$(JOBS) -C $(KSRC) M=$(SRC_DIR) modules
+	$(MAKE) $(LLVM_OR_NOT) -j$(JOBS) -C $(KSRC) M=$(SRC_DIR) modules
 	@cp -v $(SRC_DIR)/*.ko .
 
 clean:
-	$(MAKE) -j$(JOBS) -C $(KSRC) M=$(SRC_DIR) clean
+	$(MAKE) $(LLVM_OR_NOT) -j$(JOBS) -C $(KSRC) M=$(SRC_DIR) clean
 	@rm -vf *.ko
 
 install: all

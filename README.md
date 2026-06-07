@@ -16,9 +16,9 @@ The MT7902 is not yet fully supported by the mainline `mt76` kernel driver, alth
 Prerequisites: `build-essential`, `linux-headers`, `dkms`, `zstd`. The script installs these automatically for Debian/Fedora/Arch/openSUSE.
 
 ```sh
-git clone https://github.com/abdullaabdullazade/mt7902_driver
+git clone https://github.com/ManishModak/mt7902_driver
 cd mt7902_driver
-sudo ./install.sh            # installs both wifi + bluetooth
+sudo ./install.sh --fallback --wifi            # Recommended for CachyOS / unstable kernels
 ```
 
 Reboot after installing.
@@ -180,9 +180,18 @@ Should work on other MT7902-based PCIe cards. Minimum kernel: 5.4.
 
 ## Tested on
 
-| System | Kernel | WiFi | Bluetooth |
-|--------|--------|------|-----------|
-| Arch Linux (x86_64) | 6.18.9-arch1-2 | ✅ Working | ✅ Working |
+| System | Kernel | WiFi | Bluetooth | Notes |
+|--------|--------|------|-----------|-------|
+| Arch Linux (x86_64) | 6.18.9-arch1-2 | ✅ Working | ✅ Working | |
+| CachyOS (x86_64) | 7.0.11-1-cachyos | ✅ Working | ✅ Working | Built with LLVM/Clang (automatically detected) |
+
+## Clang/LLVM Kernel Support (e.g., CachyOS)
+
+Distributions like CachyOS compile their kernels using Clang/LLVM with advanced optimization flags instead of standard GCC. 
+
+This repository includes custom enhancements to build successfully on these systems:
+* **Auto-Compiler Detection:** The Makefiles under `mt7902/` and `gen4-mt7902/` automatically check the target kernel's `.config` for `CONFIG_CC_IS_CLANG=y`. If found, they append the `LLVM=1` flag to the kernel build system (Kbuild).
+* **Cross-compatibility:** This allows the same repository to build cleanly using Clang on the main CachyOS kernel (e.g., `7.0.11-1-cachyos`) and using standard GCC on the CachyOS LTS kernel (e.g., `6.18.34-1-cachyos-lts`), with zero manual configuration.
 
 ## Upstream Patch Integration
 
