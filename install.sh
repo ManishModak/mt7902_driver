@@ -436,7 +436,11 @@ install_bt() {
 
     step "Building btusb + btmtk modules"
     cd "$bt_dir"
-    make -C /lib/modules/$(uname -r)/build/ M=$(pwd) modules
+    local LLVM_FLAG=""
+    if grep -q "CONFIG_CC_IS_CLANG=y" "/lib/modules/$(uname -r)/build/.config" 2>/dev/null; then
+        LLVM_FLAG="LLVM=1"
+    fi
+    make $LLVM_FLAG -C /lib/modules/$(uname -r)/build/ M=$(pwd) modules
 
     if command -v zstd &>/dev/null; then
         zstd -f btusb.ko -o btusb.ko.zst 2>/dev/null
