@@ -85,22 +85,24 @@ EOF
     exit 0
 }
 
-# parse args — default is --all
-if [ $# -eq 0 ]; then
-    DO_WIFI=true; DO_BT=true
-fi
-
+# parse args
+HAS_ACTION=false
 for arg in "$@"; do
     case $arg in
-        --all)      DO_WIFI=true; DO_BT=true ;;
-        --wifi)     DO_WIFI=true ;;
-        --bt)       DO_BT=true ;;
+        --all)      DO_WIFI=true; DO_BT=true; HAS_ACTION=true ;;
+        --wifi)     DO_WIFI=true; HAS_ACTION=true ;;
+        --bt)       DO_BT=true; HAS_ACTION=true ;;
         --no-dkms)  USE_DKMS=false ;;
         --fallback) USE_FALLBACK=true ;;
         -h|--help)  usage ;;
         *)          echo "Unknown option: $arg"; usage ;;
     esac
 done
+
+if [ "$HAS_ACTION" = false ]; then
+    DO_WIFI=true
+    DO_BT=true
+fi
 
 if [ "$EUID" -ne 0 ]; then
     echo -e "${RED}✗ Run this script with sudo${NC}"
